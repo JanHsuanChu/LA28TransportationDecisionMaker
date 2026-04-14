@@ -31,7 +31,11 @@ RECURRING_KUSD_TO_USD_PER_MONTH <- 1000
 # On-schedule delivery: weights on D5, D6, D7 contributions — must sum to 1
 theta_on_schedule <- c(d5 = 0.4, d6 = 0.2, d7 = 0.4) # relative importance
 
+# Reliability: weights on D3, D5 contributions — must sum to 1
+theta_reliability <- c(d3 = 0.5, d5 = 0.5) # relative importance
+
 stopifnot(abs(sum(theta_on_schedule) - 1) < 1e-10)
+stopifnot(abs(sum(theta_reliability) - 1) < 1e-10)
 
 # Total profit ($): one scenario-level value; loss magnitude if the event occurs is
 # (fraction in `get_on_schedule_delivery_risk` tables) × this amount, for every option.
@@ -49,12 +53,12 @@ get_kloc_total <- function(d5, d6, d7, d8) {
   # option 1 Use an existing routing framework (such as OpenTripPlanner, Navitia, GraphHopper)
   # option 2 Develop custom algorithm
   k5 <- case_when(
-    d5 == 1 ~ 5, d5 == 2 ~ 15, TRUE ~ NA_real_)
+    d5 == 0 ~ 5, d5 == 1 ~ 15, TRUE ~ NA_real_)
   # D6 AI / ML: 2 options
   # option 1 No AI: rule-based and deterministic optimization
   # option 2 Use AI: Machine learning prediction model
   k6 <- case_when(
-    d6 == 1 ~ 0, d6 == 2 ~ 10, TRUE ~ NA_real_)
+    d6 == 0 ~ 0, d6 == 1 ~ 10, TRUE ~ NA_real_)
   
   # D7 Frontend Web Layer: 3 options
   # option 1: React
@@ -85,39 +89,51 @@ get_programming_cost <- function(d5, d6, d7, d8) {
   cost_base * (1 + k_complex)
 }
 
+# Multi-select helper (for additive choices)
+# D1, D2, D3 are multi-select choices. (D8 as well but N/A because only choice has cost implication.)
+
+sum_selected_options <- function(selected_levels, level_to_cost) {
+  x <- as.integer(selected_levels)
+  if (length(x) == 0L) return(0)
+  if (any(is.na(x))) return(NA_real_)
+  keys <- as.character(x)
+  if (any(!keys %in% names(level_to_cost))) return(NA_real_)
+  sum(unname(level_to_cost[keys]))
+}
+
 # --- Computing cost (recurring): thousands of dollars per month — D1, D2, D6 --------------------------------
 
 get_computing_cost <- function(d1, d2, d6) {
-  # D1 Planning Trigger: 4 options
+  # D1 Planning Trigger: 4 options (multi-select additive)
   # option 1 Pre-event planning.
   # option 2 User-requested re-planning.
   # option 3 Event-triggered re-planning, such as major update of shuttle and metro schedule.
   # option 4 Continuous real-time re-planning.
-  m1 <- case_when(
-    d1 == 1 ~ 1, d1 == 2 ~ 1.5, d1 == 3 ~ 1.2, d1 == 4 ~ 2, TRUE ~ NA_real_)
-  # D2 Stakholder Data Sharing: 3 options
+  m1 <- sum_selected_options(d1, c("1" = 1, "2" = 1.5, "3" = 1.2, "4" = 2))
+
+  # D2 Stakholder Data Sharing: 3 options (multi-select additive)
   # option 1 Direct Point-to-Point Integrations.
   # option 2 Centralized API Gateway / Integration Layer.
   # option 3 Data Hub / Data Exchange Platform.
-  m2 <- case_when(
-    d2 == 1 ~ 1, d2 == 2 ~ 1.1, d2 == 3 ~ 1.2, TRUE ~ NA_real_)
+  m2 <- sum_selected_options(d2, c("1" = 1, "2" = 1.1, "3" = 1.2))
+
   # D6 AI / ML: 2 options
   # option 1 No AI: rule-based and deterministic optimization
   # option 2 Use AI: Machine learning prediction model
   m6 <- case_when(
-    d6 == 1 ~ 0, d6 == 2 ~ 1, TRUE ~ NA_real_)
+    d6 == 0 ~ 0, d6 == 1 ~ 1, TRUE ~ NA_real_)
   m1 + m2 + m6
 }
 
 # --- Third-party services cost (recurring): thousands of dollars per month — D3, D4, D5, D7
 
 get_third_party_cost <- function(d3, d4, d5) {
-  # D3 Traffic Data Source
+  # D3 Traffic Data Source (multi-select additive)
   # option 1 Public government APIs.
   # option 2 Commercial navigation apps.
   # option 3 Sensor infrastructure.
-  m3 <- case_when(
-    d3 == 1 ~ 0.1, d3 == 2 ~ 0.5, d3 == 3 ~ 2, TRUE ~ NA_real_)
+  m3 <- sum_selected_options(d3, c("1" = 0.1, "2" = 0.5, "3" = 2))
+
   # D4 Data Warehouse Solution
   # option 1: Snowflake;
   # option 2: Amazon Redshfit;
@@ -130,7 +146,7 @@ get_third_party_cost <- function(d3, d4, d5) {
   # option 1 Use an existing routing framework (such as OpenTripPlanner, Navitia, GraphHopper)
   # option 2 Develop custom algorithm
   m5 <- case_when(
-    d5 == 1 ~ 0.5, d5 == 2 ~ 0, TRUE ~ NA_real_)
+    d5 == 0 ~ 0.5, d5 == 1 ~ 0, TRUE ~ NA_real_)
   m3 + m4 + m5
 }
 
@@ -249,13 +265,13 @@ get_on_schedule_delivery_risk <- function(d5, d6, d7, total_profit) {
     return(na)
   }
   r5 <- case_when(
-    d5 == 1 ~ 0.01 * 1 * total_profit,
-    d5 == 2 ~ 0.03 * 1 * total_profit,
+    d5 == 0 ~ 0.01 * 1 * total_profit,
+    d5 == 1 ~ 0.03 * 1 * total_profit,
     TRUE ~ NA_real_
   )
   r6 <- case_when(
-    d6 == 1 ~ 0.01 * 0.2 * total_profit,
-    d6 == 2 ~ 0.011 * 0.2 * total_profit,
+    d6 == 0 ~ 0.01 * 0.2 * total_profit,
+    d6 == 1 ~ 0.011 * 0.2 * total_profit,
     TRUE ~ NA_real_
   )
   r7 <- case_when(
@@ -305,17 +321,88 @@ print_on_schedule_delivery_risk_summary <- function(risk_out, total_profit) {
   invisible(NULL)
 }
 
+# --- Reliability (% system up time): D3, D5 --
+
+get_reliability <- function(d3_reliability, d5) {
+  rel_na <- list(
+    reliability_d3 = NA_real_,
+    reliability_d5 = NA_real_,
+    contribution_d3 = NA_real_,
+    contribution_d5 = NA_real_,
+    reliability_weighted = NA_real_
+  )
+
+  d3_level <- as.integer(d3_reliability)
+  d5_level <- as.integer(d5)
+
+  if (length(d3_level) != 1L || is.na(d3_level)) return(rel_na)
+  if (length(d5_level) != 1L || is.na(d5_level)) return(rel_na)
+# D3 for reliability is single-select (separate definition from D3 used in cost metrics).
+  rel_d3 <- case_when(
+    d3_level == 1 ~ 0.95, # one source of traffic data; more source increases reliability
+    d3_level == 2 ~ 0.98, # two sources
+    d3_level == 3 ~ 0.99, # three sources
+    TRUE ~ NA_real_
+  )
+
+  rel_d5 <- case_when(
+    d5_level == 0 ~ 0.995,
+    d5_level == 1 ~ 0.98,
+    TRUE ~ NA_real_
+  )
+
+  if (is.na(rel_d3) || is.na(rel_d5)) return(rel_na)
+
+  t3 <- theta_reliability[["d3"]]
+  t5 <- theta_reliability[["d5"]]
+  c3 <- t3 * rel_d3
+  c5 <- t5 * rel_d5
+
+  list(
+    reliability_d3 = rel_d3,
+    reliability_d5 = rel_d5,
+    contribution_d3 = c3,
+    contribution_d5 = c5,
+    reliability_weighted = c3 + c5
+  )
+}
+
+print_reliability_summary <- function(rel_out) {
+  cat("--- Reliability Summary ---\n")
+  fmt_pct <- function(x) {
+    if (length(x) != 1L || is.na(x)) "NA" else sprintf("%.2f%%", 100 * x)
+  }
+  cat(sprintf("Reliability (D3):                    %s\n", fmt_pct(rel_out$reliability_d3)))
+  cat(sprintf("Reliability (D5):                    %s\n", fmt_pct(rel_out$reliability_d5)))
+  cat(sprintf(
+    "Weights θ: d3 = %.2f, d5 = %.2f\n",
+    theta_reliability[["d3"]], theta_reliability[["d5"]]
+  ))
+  cat(sprintf(
+    "θ·rel contributions: d3 %s; d5 %s\n",
+    fmt_pct(rel_out$contribution_d3),
+    fmt_pct(rel_out$contribution_d5)
+  ))
+  cat(sprintf("Weighted reliability (θ · rel):      %s\n", fmt_pct(rel_out$reliability_weighted)))
+  cat("---------------------------\n")
+  invisible(NULL)
+}
+
 # --- Facade: one architecture --------------------------------------------------
 
 estimate_architecture <- function(
-    d1, d2, d3, d4, d5, d6, d7, d8,
+    d1, d2, d3_cost, d4, d5, d6, d7, d8,
     n_months_horizon = 24L,
     discount_rate_annual,
     print_cost_summary = TRUE,
     print_risk_summary = TRUE,
+    d3_reliability,
     total_profit) {
   if (missing(discount_rate_annual)) {
     discount_rate_annual <- get0("discount_rate_annual", envir = .GlobalEnv, ifnotfound = NA_real_)
+  }
+  if (missing(d3_reliability)) {
+    d3_reliability <- get0("arch_d3_reliability", envir = .GlobalEnv, ifnotfound = NA_real_)
   }
   if (missing(total_profit)) {
     total_profit <- get0("total_profit", envir = .GlobalEnv, ifnotfound = NA_real_)
@@ -324,7 +411,7 @@ estimate_architecture <- function(
   cocomo_effort_pm <- get_cocomo_effort_pm(kloc_total)
   programming <- get_programming_cost(d5, d6, d7, d8)
   computing_k <- get_computing_cost(d1, d2, d6)
-  third_party_k <- get_third_party_cost(d3, d4, d5)
+  third_party_k <- get_third_party_cost(d3_cost, d4, d5)
   computing <- computing_k * RECURRING_KUSD_TO_USD_PER_MONTH
   third_party <- third_party_k * RECURRING_KUSD_TO_USD_PER_MONTH
   recurring_total <- computing + third_party
@@ -340,8 +427,10 @@ estimate_architecture <- function(
   }
 
   on_schedule_risk <- get_on_schedule_delivery_risk(d5, d6, d7, total_profit)
+  reliability <- get_reliability(d3_reliability, d5)
   if (isTRUE(print_risk_summary)) {
     print_on_schedule_delivery_risk_summary(on_schedule_risk, total_profit)
+    print_reliability_summary(reliability)
   }
 
   cost_totals <- list(
@@ -375,19 +464,36 @@ estimate_architecture <- function(
     discount_rate_monthly = npv_out$discount_rate_monthly,
     cost_totals = cost_totals,
     total_profit = total_profit,
+    d3_cost = d3_cost,
+    d3_reliability = d3_reliability,
     on_schedule_risk = on_schedule_risk,
     on_schedule_delivery_risk = on_schedule_risk$risk_weighted,
-    r_sum_on_schedule = on_schedule_risk$r_sum
+    r_sum_on_schedule = on_schedule_risk$r_sum,
+    reliability = reliability,
+    reliability_avg = reliability$reliability_weighted
   )
 }
 
 # =============================================================================
-# YOUR ARCHITECTURE — edit only the integers below, then run the whole script
+# YOUR ARCHITECTURE — edit values below, then run the whole script
 # =============================================================================
 
-arch_d1 <- 1
-arch_d2 <- 1
-arch_d3 <- 1
+# D1, D2, and D3 (for COST) are multi-select (additive): set them as integer vectors, e.g. c(1, 3)
+# To pick a single option, still use a vector of length 1 (e.g. c(2)).
+arch_d1 <- c(1)
+arch_d2 <- c(1)
+arch_d3_cost <- c(1)
+
+# D3 (for RELIABILITY) is a separate, single-select definition (scalar integer).
+arch_d3_reliability <- 1
+
+# Example (uncomment to use):
+# arch_d1 <- c(1, 3)
+# arch_d2 <- c(2, 3)
+# arch_d3_cost <- c(1, 2)
+# arch_d3_reliability <- 2
+
+# All other decisions are single-select: keep them as a single integer.
 arch_d4 <- 1
 arch_d5 <- 1
 arch_d6 <- 1
@@ -395,6 +501,63 @@ arch_d7 <- 1
 arch_d8 <- 1
 
 metrics <- estimate_architecture(
-  arch_d1, arch_d2, arch_d3, arch_d4, arch_d5, arch_d6, arch_d7, arch_d8
+  arch_d1, arch_d2, arch_d3_cost, arch_d4, arch_d5, arch_d6, arch_d7, arch_d8,
+  d3_reliability = arch_d3_reliability
 )
 # metrics: recurring & NPV in USD; `on_schedule_delivery_risk` = θ·r; `r_sum_on_schedule` = r_D5+r_D6+r_D7; detail in `on_schedule_risk`
+
+# =============================================================================
+# Reference Architecture
+# =============================================================================
+
+# Define three reference architectures and evaluate each with the same metric pipeline.
+# Edit option values below to match your intended A/B/C baselines.
+reference_architectures <- list(
+  list(
+    architecture = "A: DC Metro",
+    d1 = c(3,4), d2 = c(3), d3_cost = c(1), d3_reliability = 1,
+    d4 = 5, d5 = 0, d6 = 0, d7 = 1, d8 = 1
+  ),
+  list(
+    architecture = "B: CityMapper",
+    d1 = c(1, 2), d2 = c(2,3), d3_cost = c(1), d3_reliability = 1,
+    d4 = 3, d5 = 1, d6 = 1, d7 = 1, d8 = 4
+  ),
+  list(
+    architecture = "C: Paris 2024",
+    d1 = c(1), d2 = c(2, 3), d3_cost = c(1, 3), d3_reliability = 2,
+    d4 = 2, d5 = 1, d6 = 1, d7 = 3, d8 = 4
+  )
+)
+
+reference_metrics <- bind_rows(lapply(reference_architectures, function(a) {
+  out <- estimate_architecture(
+    d1 = a$d1,
+    d2 = a$d2,
+    d3_cost = a$d3_cost,
+    d4 = a$d4,
+    d5 = a$d5,
+    d6 = a$d6,
+    d7 = a$d7,
+    d8 = a$d8,
+    d3_reliability = a$d3_reliability,
+    print_cost_summary = FALSE,
+    print_risk_summary = FALSE
+  )
+  tibble(
+    Architecture = a$architecture,
+    `Total Cost ($)` = out$total_cost,
+    `On-Schedule Delivery ($)` = out$on_schedule_delivery_risk,
+    `Reliability (%)` = 100 * out$reliability_avg
+  )
+}))
+
+cat("\n--- Reference Architecture Summary ---\n")
+print(reference_metrics %>%
+  mutate(
+    across(
+      c(`Total Cost ($)`, `On-Schedule Delivery ($)`, `Reliability (%)`),
+      ~ round(.x, 2)
+    )
+  ))
+
