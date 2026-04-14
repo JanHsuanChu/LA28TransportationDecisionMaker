@@ -1,19 +1,21 @@
-
 def get_travel_time_reduction(d3, d5, d6):
     # Define the min/max of the utility scale
     w_min = 0
     w_max = 30  # max plausible % travel time reduction
 
-    # D3: more sources = more available data
-    A_map = {0: 0.3, 1: 0.6, 2: 1.0}
+    # D3: more sources = more available data so time can be reduced
+    # 1 source, 2 sources, or 3 sources
+    A_map = {1: 0.3, 2: 0.6, 3: 1.0}
     A = A_map.get(d3, 0)
 
     # D5 better engine implies better data use 
-    Q_map = {0: 0.3, 1: 0.6, 2: 1.0}
+    # 0 = Plug-and-Play Engine; 1 = Custom Engine
+    Q_map = {0: 0.5, 1: 1.0}
     Q = Q_map.get(d5, 0)
 
     # D6: AI improves routing intelligence 
-    M_map = {0: 0.2, 1: 0.6, 2: 1.0}
+    # 0 = No AI; 1 = AI Used
+    M_map = {0: 0.4, 1: 1.0}
     M = M_map.get(d6, 0)
 
     # Coefficients (theta): weighted contribution of each intermediate variable
@@ -34,21 +36,23 @@ def get_prediction_accuracy(d2, d3, d6):
     w_min = 0.50
     w_max = 0.99
 
-    # Recode d3 -> data quality (Q): more sources improve ground truth
-    Q_map = {0: 0.3, 1: 0.6, 2: 1.0}
+    # D3 -> data quality (Q): more sources improve accuracy
+    # 1 source, 2 sources, or 3 sources
+    Q_map = {1: 0.3, 2: 0.6, 3: 1.0}
     Q = Q_map.get(d3, 0)
 
-    # Recode d2 -> data sharing bonus: open sharing improves Q by removing gaps
-    Q_bonus_map = {0: 0.00, 1: 0.10, 2: 0.20}
+    # D2 -> data sharing bonus: open sharing improves Q by removing gaps
+    Q_bonus_map = {1: 0.00, 2: 0.10, 3: 0.20}
     Q_bonus = Q_bonus_map.get(d2, 0)
     Q_adj = min(Q + Q_bonus, 1.0)  # cap at 1.0
 
-    # Recode d6 -> model capability (M): AI improves prediction accuracy
-    M_map = {0: 0.2, 1: 0.6, 2: 1.0}
+    # D6 -> model capability (M): AI improves prediction accuracy
+    # 0 = No AI; 1 = AI Used
+    M_map = {0: 0.4, 1: 1.0}
     M = M_map.get(d6, 0)
 
     # Coefficients (eta): data quality weighted slightly higher than model
-    # because even a great model fails on bad data
+    # because even good model fails on bad data
     eta_1 = 0.55  # weight on adjusted data quality
     eta_2 = 0.45  # weight on model capability
 
@@ -59,20 +63,23 @@ def get_prediction_accuracy(d2, d3, d6):
 
 def get_response_time(d2, d5, d6):
     # Define the min/max of the utility scale (seconds)
+    
     w_min = 1   # best = 1 second
     w_max = 60  # worst = 60 seconds
 
     # d2 = integration complexity (I):
     # More sharing partners means more overhead to ingest data
-    I_map = {0: 0.2, 1: 0.5, 2: 1.0}
+    I_map = {1: 0.2, 2: 0.5, 3: 1.0}
     I = I_map.get(d2, 0)
 
     # d5 = base computational complexity (C)
-    C_engine_map = {0: 0.2, 1: 0.5, 2: 0.8}
+    # 0 = Plug-and-Play Engine; 1 = Custom Engine
+    C_engine_map = {0: 0.4, 1: 0.8}
     C_engine = C_engine_map.get(d5, 0)
 
     # d6 = additional computational complexity from AI (C)
-    C_ai_map = {0: 0.0, 1: 0.3, 2: 0.8}
+    # 0 = No AI; 1 = AI Used
+    C_ai_map = {0: 0.0, 1: 0.8}
     C_ai = C_ai_map.get(d6, 0)
 
     # Combined computational complexity
@@ -93,11 +100,12 @@ def get_data_coverage(d2, d3):
     w_max = 100
 
     # d3 = base source coverage fraction
-    source_cov_map = {0: 0.30, 1: 0.60, 2: 1.00}
+    # 1 source, 2 sources, or 3 sources
+    source_cov_map = {1: 0.30, 2: 0.60, 3: 1.00}
     source_cov = source_cov_map.get(d3, 0)
 
-    # d2 = open sharing fills in gaps within sources
-    sharing_mult_map = {0: 0.70, 1: 0.85, 2: 1.00}
+    # d2 = open sharing fills in gaps within sources. The more the better
+    sharing_mult_map = {1: 0.70, 2: 0.85, 3: 1.00}
     sharing_mult = sharing_mult_map.get(d2, 0)
 
     # Coverage = sources selected * how accessible those sources are
@@ -111,10 +119,10 @@ def evaluate_architecture(arch):
     d2, d3, d5, d6 = arch["d2"], arch["d3"], arch["d5"], arch["d6"]
 
     return {
-        "travel_time_reduction_pct": get_travel_time_reduction(d3, d5, d6),
+        "travel_time_reduction": get_travel_time_reduction(d3, d5, d6),
         "prediction_accuracy":       get_prediction_accuracy(d2, d3, d6),
-        "response_time_sec":         get_response_time(d2, d5, d6),
-        "data_coverage_pct":         get_data_coverage(d2, d3),
+        "response_time":         get_response_time(d2, d5, d6),
+        "data_coverage":         get_data_coverage(d2, d3),
     }
 
 #Reference Architectures
@@ -122,19 +130,16 @@ if __name__ == "__main__":
     import pandas as pd
 
     
-    arch_A = {"d2": 0, "d3": 0, "d5": 0, "d6": 0}
+    arch_A = {"d2": 1, "d3": 1, "d5": 0, "d6": 0}
 
-    arch_B = {"d2": 1, "d3": 1, "d5": 1, "d6": 1}
+    arch_B = {"d2": 2, "d3": 1, "d5": 1, "d6": 1}
 
-    arch_C = {"d2": 2, "d3": 2, "d5": 2, "d6": 2}
-
-    arch_D = {"d2": 2, "d3": 2, "d5": 0, "d6": 0}
+    arch_C = {"d2": 2, "d3": 2, "d5": 1, "d6": 1}
 
     archs = {
-        "A: Minimal":          arch_A,
-        "B: Mid-Tier":         arch_B,
-        "C: Full-Stack":       arch_C,
-        "D: Data-Rich/Dumb":   arch_D,
+        "A: DC Metro":          arch_A,
+        "B: CityMapper":         arch_B,
+        "C: Paris 2024":       arch_C,
     }
 
     rows = []
@@ -142,10 +147,10 @@ if __name__ == "__main__":
         result = evaluate_architecture(arch)
         rows.append({
             "Architecture":           name,
-            "TTR (%)":                round(result["travel_time_reduction_pct"], 2),
+            "TTR (%)":                round(result["travel_time_reduction"], 2),
             "Accuracy":               round(result["prediction_accuracy"], 3),
-            "Response Time (s)":      round(result["response_time_sec"], 1),
-            "Data Coverage (%)":      round(result["data_coverage_pct"], 1),
+            "Response Time (s)":      round(result["response_time"], 1),
+            "Data Coverage (%)":      round(result["data_coverage"], 1),
         })
 
     df = pd.DataFrame(rows).set_index("Architecture")
